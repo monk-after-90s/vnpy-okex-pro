@@ -398,6 +398,7 @@ class OkexRestApi(RestClient):
         end_time = str(int((datetime.now().timestamp() + 1) * 1000))  # 现在的毫秒时间戳
         path: str = "/api/v5/market/history-candles"
 
+        last_req_ts = None  # 上次请求时间戳
         while True:
             # 创建查询参数
             params: dict = {
@@ -410,18 +411,32 @@ class OkexRestApi(RestClient):
 
             if params['after'] <= params['before']:
                 break
+
+            # 限速：20次/2s(okex)，粗略处理为请求间隔不低于0.1s
+            if last_req_ts is not None:
+                interval = time.time() - last_req_ts
+                if interval < 0.1:  # 间隔太短
+                    sleep_seconds = 0.1 - interval
+                    self.gateway.write_log(f"{sleep_seconds=}")
+                    time.sleep(sleep_seconds)
             # 从服务器获取响应
+            last_req_ts = time.time()
             resp: Response = self.request(
                 "GET",
                 path,
                 params=params
             )
-
             # 如果请求失败则终止循环
             if resp.status_code // 100 != 2:
                 msg = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
                 self.gateway.write_log(msg)
-                break
+
+                if json.loads(resp.text)['code'] == '50011':
+                    time.sleep(0.5)
+                    self.gateway.write_log("重试")
+                    continue
+                else:
+                    break
             else:
                 data: dict = resp.json()
 
