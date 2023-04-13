@@ -4,7 +4,6 @@
 3. 只支持单向持仓模式
 """
 
-
 import base64
 import hashlib
 import hmac
@@ -48,7 +47,6 @@ from vnpy.trader.object import (
 )
 from vnpy_rest import Request, RestClient
 from vnpy_websocket import WebsocketClient
-
 
 # 中国时区
 CHINA_TZ: timezone = timezone("Asia/Shanghai")
@@ -262,13 +260,13 @@ class OkexRestApi(RestClient):
         return request
 
     def connect(
-        self,
-        key: str,
-        secret: str,
-        passphrase: str,
-        proxy_host: str,
-        proxy_port: int,
-        server: str
+            self,
+            key: str,
+            secret: str,
+            passphrase: str,
+            proxy_host: str,
+            proxy_port: int,
+            server: str
     ) -> None:
         """连接REST服务器"""
         self.key = key
@@ -376,11 +374,11 @@ class OkexRestApi(RestClient):
         self.gateway.write_log(f"{instType}合约信息查询成功")
 
     def on_error(
-        self,
-        exception_type: type,
-        exception_value: Exception,
-        tb: TracebackType,
-        request: Request
+            self,
+            exception_type: type,
+            exception_value: Exception,
+            tb: TracebackType,
+            request: Request
     ) -> None:
         """触发异常回报"""
         msg: str = f"触发异常，状态码：{exception_type}，信息：{exception_value}"
@@ -394,22 +392,24 @@ class OkexRestApi(RestClient):
         """
         查询历史数据
 
-        K线数据每个粒度最多可获取最近1440条
         """
+        # todo 改为并发版本
         buf: Dict[datetime, BarData] = {}
-        end_time: str = ""
-        path: str = "/api/v5/market/candles"
+        end_time = str(int((datetime.now().timestamp() + 1) * 1000))  # 现在的毫秒时间戳
+        path: str = "/api/v5/market/history-candles"
 
-        for i in range(15):
+        while True:
             # 创建查询参数
             params: dict = {
                 "instId": req.symbol,
-                "bar": INTERVAL_VT2OKEX[req.interval]
+                "bar": INTERVAL_VT2OKEX[req.interval],
+                "after": end_time,  # 虽然叫after，但"请求此时间戳之前（更旧的数据）的分页内容，传的值为对应接口的ts"，不包含参数中的时间
+                "before": str(int((req.start.timestamp() - 1) * 1000))
+                # 虽然叫before，但"请求此时间戳之后（更新的数据）的分页内容，传的值为对应接口的ts"，不包含参数中的时间
             }
 
-            if end_time:
-                params["after"] = end_time
-
+            if params['after'] <= params['before']:
+                break
             # 从服务器获取响应
             resp: Response = self.request(
                 "GET",
@@ -426,9 +426,12 @@ class OkexRestApi(RestClient):
                 data: dict = resp.json()
 
                 if not data["data"]:
-                    m = data["msg"]
-                    msg = f"获取历史数据为空，{m}"
+                    # m = data["msg"]
+                    msg = f"获取历史数据结束"
+                    self.gateway.write_log(msg)
                     break
+
+                data["data"].sort(key=lambda item: -int(item[0]))
 
                 for bar_list in data["data"]:
                     ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm = bar_list
@@ -482,10 +485,10 @@ class OkexWebsocketPublicApi(WebsocketClient):
         }
 
     def connect(
-        self,
-        proxy_host: str,
-        proxy_port: int,
-        server: str
+            self,
+            proxy_host: str,
+            proxy_port: int,
+            server: str
     ) -> None:
         """连接Websocket公共频道"""
         if server == "REAL":
@@ -686,13 +689,13 @@ class OkexWebsocketPrivateApi(WebsocketClient):
         self.reqid_order_map: Dict[str, OrderData] = {}
 
     def connect(
-        self,
-        key: str,
-        secret: str,
-        passphrase: str,
-        proxy_host: str,
-        proxy_port: int,
-        server: str
+            self,
+            key: str,
+            secret: str,
+            passphrase: str,
+            proxy_host: str,
+            proxy_port: int,
+            server: str
     ) -> None:
         """连接Websocket私有频道"""
         self.key = key
@@ -875,14 +878,14 @@ class OkexWebsocketPrivateApi(WebsocketClient):
         okex_req: dict = {
             "op": "login",
             "args":
-            [
-                {
-                    "apiKey": self.key,
-                    "passphrase": self.passphrase,
-                    "timestamp": timestamp,
-                    "sign": signature.decode("utf-8")
-                }
-            ]
+                [
+                    {
+                        "apiKey": self.key,
+                        "passphrase": self.passphrase,
+                        "timestamp": timestamp,
+                        "sign": signature.decode("utf-8")
+                    }
+                ]
         }
         self.send_packet(okex_req)
 
