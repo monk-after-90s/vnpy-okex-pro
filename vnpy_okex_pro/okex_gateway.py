@@ -421,57 +421,64 @@ class OkexRestApi(RestClient):
                     time.sleep(sleep_seconds)
             # 从服务器获取响应
             last_req_ts = time.time()
-            resp: Response = self.request(
-                "GET",
-                path,
-                params=params
-            )
-            # 如果请求失败则终止循环
-            if resp.status_code // 100 != 2:
-                msg = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
-                self.gateway.write_log(msg)
 
-                if json.loads(resp.text)['code'] == '50011':
-                    time.sleep(0.5)
-                    self.gateway.write_log("重试")
-                    continue
-                else:
-                    break
+            try:
+                resp: Response = self.request(
+                    "GET",
+                    path,
+                    params=params
+                )
+            except:
+                time.sleep(5)
+                self.gateway.write_log("请求报错后重试")
+                continue
             else:
-                data: dict = resp.json()
-
-                if not data["data"]:
-                    # m = data["msg"]
-                    msg = f"获取历史数据结束"
+                # 如果请求失败则终止循环
+                if resp.status_code // 100 != 2:
+                    msg = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
                     self.gateway.write_log(msg)
-                    break
 
-                data["data"].sort(key=lambda item: -int(item[0]))
+                    if json.loads(resp.text)['code'] == '50011':
+                        time.sleep(0.5)
+                        self.gateway.write_log("重试")
+                        continue
+                    else:
+                        break
+                else:
+                    data: dict = resp.json()
 
-                for bar_list in data["data"]:
-                    ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm = bar_list
-                    dt = parse_timestamp(ts)
-                    bar: BarData = BarData(
-                        symbol=req.symbol,
-                        exchange=req.exchange,
-                        datetime=dt,
-                        interval=req.interval,
-                        volume=float(vol),
-                        open_price=float(o),
-                        high_price=float(h),
-                        low_price=float(l),
-                        close_price=float(c),
-                        gateway_name=self.gateway_name
-                    )
-                    buf[bar.datetime] = bar
+                    if not data["data"]:
+                        # m = data["msg"]
+                        msg = f"获取历史数据结束"
+                        self.gateway.write_log(msg)
+                        break
 
-                begin: str = data["data"][-1][0]
-                end: str = data["data"][0][0]
-                msg: str = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{parse_timestamp(begin)} - {parse_timestamp(end)}"
-                self.gateway.write_log(msg)
+                    data["data"].sort(key=lambda item: -int(item[0]))
 
-                # 更新结束时间
-                end_time = begin
+                    for bar_list in data["data"]:
+                        ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm = bar_list
+                        dt = parse_timestamp(ts)
+                        bar: BarData = BarData(
+                            symbol=req.symbol,
+                            exchange=req.exchange,
+                            datetime=dt,
+                            interval=req.interval,
+                            volume=float(vol),
+                            open_price=float(o),
+                            high_price=float(h),
+                            low_price=float(l),
+                            close_price=float(c),
+                            gateway_name=self.gateway_name
+                        )
+                        buf[bar.datetime] = bar
+
+                    begin: str = data["data"][-1][0]
+                    end: str = data["data"][0][0]
+                    msg: str = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{parse_timestamp(begin)} - {parse_timestamp(end)}"
+                    self.gateway.write_log(msg)
+
+                    # 更新结束时间
+                    end_time = begin
 
         index: List[datetime] = list(buf.keys())
         index.sort()
