@@ -1,3 +1,6 @@
+# 检查下载历史K线是否包含了当前的未完成K线
+
+
 # vnpy-okex-pro
 
 继承自[KandyYe的vnpy_okex](https://github.com/KandyYe/vnpy_okex)
